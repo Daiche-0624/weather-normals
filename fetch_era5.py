@@ -1,3 +1,5 @@
+import argparse
+import datetime
 import json
 import os
 import sys
@@ -6,11 +8,27 @@ import urllib.parse
 import urllib.error
 from collections import defaultdict
 
-# さいたま市付近の座標
-LATITUDE = 35.86
-LONGITUDE = 139.65
 
-TODAY_DATE = "2026-08-27"
+def parse_args():
+    parser = argparse.ArgumentParser(description="今日の気温を平年値・過去の記録と比較する")
+    parser.add_argument("--lat", type=float, default=35.86, help="緯度(省略時: さいたま市付近 35.86)")
+    parser.add_argument("--lon", type=float, default=139.65, help="経度(省略時: さいたま市付近 139.65)")
+    parser.add_argument("--date", type=str, default=None, help="対象日 YYYY-MM-DD(省略時: 今日)")
+    parser.add_argument("--no-cache", action="store_true", help="キャッシュを無視して再取得する")
+    args = parser.parse_args()
+
+    if args.date is None:
+        date = datetime.date.today()
+    else:
+        try:
+            date = datetime.date.fromisoformat(args.date)
+        except ValueError:
+            parser.error(f"--date は YYYY-MM-DD 形式で指定してください(入力値: {args.date!r})")
+
+    return args.lat, args.lon, date.isoformat(), args.no_cache
+
+
+LATITUDE, LONGITUDE, TODAY_DATE, FORCE_REFRESH = parse_args()
 TARGET_MONTH_DAY = TODAY_DATE[5:]
 
 # --- キャッシュ ---
@@ -18,7 +36,6 @@ TARGET_MONTH_DAY = TODAY_DATE[5:]
 # ファイル名に地点・期間を含めておけば、期間が変わったときだけ
 # 自動的にキャッシュミスして再取得される(=有効期限の管理が不要)。
 CACHE_DIR = "cache"
-FORCE_REFRESH = "--no-cache" in sys.argv  # このオプションを付けるとキャッシュを無視する
 
 
 def cache_name(kind, params):
