@@ -15,6 +15,7 @@ def parse_args():
     parser.add_argument("--lon", type=float, default=139.65, help="経度(省略時: さいたま市付近 139.65)")
     parser.add_argument("--date", type=str, default=None, help="対象日 YYYY-MM-DD(省略時: 今日)")
     parser.add_argument("--no-cache", action="store_true", help="キャッシュを無視して再取得する")
+    parser.add_argument("--raw", action="store_true", help="平年値を平滑化せず、対象日1日分の生の平均をそのまま使う")
     args = parser.parse_args()
 
     if args.date is None:
@@ -25,10 +26,10 @@ def parse_args():
         except ValueError:
             parser.error(f"--date は YYYY-MM-DD 形式で指定してください(入力値: {args.date!r})")
 
-    return args.lat, args.lon, date.isoformat(), args.no_cache
+    return args.lat, args.lon, date.isoformat(), args.no_cache, args.raw
 
 
-LATITUDE, LONGITUDE, TODAY_DATE, FORCE_REFRESH = parse_args()
+LATITUDE, LONGITUDE, TODAY_DATE, FORCE_REFRESH, RAW_MODE = parse_args()
 TARGET_MONTH_DAY = TODAY_DATE[5:]
 
 # --- キャッシュ ---
@@ -66,6 +67,53 @@ def fetch_daily(base_url, params, name):
         f.write(raw)
 
     return json.loads(raw)["daily"]
+
+
+# --- 平年値の平滑化(気象庁のKZフィルタ: 9日移動平均を3回) ---
+def month_day_sequence():
+    """うるう年を除いた365日分の "MM-DD" を1/1から順に返す"""
+    start = datetime.date(2001, 1, 1)  # 2001年は平年
+    return [(start + datetime.timedelta(days=i)).strftime("%m-%d") for i in range(365)]
+
+
+def build_daily_normal_series(daily, year_start, year_end):
+    """指定した年範囲(year_start〜year_end)で、365日分(2/29を除く)の
+    生の平年値を、month_day_sequence()と同じ並び順で計算する"""
+    buckets = defaultdict(list)
+    for date, mean in zip(daily["time"], daily["temperature_2m_mean"]):
+        if mean is None:
+            continue
+        month_day = date[5:]
+        if month_day == "02-29":
+            continue
+        year = int(date[:4])
+        if year_start <= year <= year_end:
+            buckets[month_day].append(mean)
+
+    return [sum(buckets[md]) / len(buckets[md]) for md in month_day_sequence()]
+
+
+def moving_average_9(series):
+    """9日移動平均。年をまたぐ部分は循環(1/1の前は12/31)として扱う"""
+    n = len(series)
+    return [sum(series[(i + offset) % n] for offset in range(-4, 5)) / 9 for i in range(n)]
+
+
+def kz_filter(series):
+    """KZ(9,3)フィルタ: 9日移動平均を3回、前の結果に対して逐次かける"""
+    result = series
+    for _ in range(3):
+        result = moving_average_9(result)
+    return result
+
+
+def lookup_normal(smoothed_series, month_day):
+    """平滑化済みシリーズから対象日の値を取り出す。
+    2/29は統計から除外しているので、2/28と3/1の平均で埋める"""
+    order = month_day_sequence()
+    if month_day == "02-29":
+        return (smoothed_series[order.index("02-28")] + smoothed_series[order.index("03-01")]) / 2
+    return smoothed_series[order.index(month_day)]
 
 
 # --- 過去の気候値(ERA5アーカイブ) ---
@@ -126,14 +174,33 @@ same_day_records = [
 
 # 平年値A: 1991-2020年の固定30年(気象庁の公式基準と同じ期間)
 normal_records_a = [r for r in same_day_records if 1991 <= int(r[0][:4]) <= 2020]
-normal_a = sum(r[1] for r in normal_records_a) / len(normal_records_a)
+raw_normal_a = sum(r[1] for r in normal_records_a) / len(normal_records_a)
 
-# 平年値B: 直近30年のローリング(same_day_recordsは日付順なので末尾30件)
-normal_records_b = same_day_records[-30:]
-normal_b = sum(r[1] for r in normal_records_b) / len(normal_records_b)
+# 平年値B: 直近30年のローリング。対象日の最新データ年を基準に年範囲を決め、
+# 365日全体でこの同じ年範囲を使う(日ごとに基準年をずらすと、9日移動平均で
+# 異なる基準期間の日を混ぜて平均することになるため)
+years_with_target_day = sorted(int(r[0][:4]) for r in same_day_records)
+year_end_b = years_with_target_day[-1]
+year_start_b = year_end_b - 29
+normal_records_b = [r for r in same_day_records if year_start_b <= int(r[0][:4]) <= year_end_b]
+raw_normal_b = sum(r[1] for r in normal_records_b) / len(normal_records_b)
 
-print(f"{TARGET_MONTH_DAY} の平年値A(1991-2020年固定、{len(normal_records_a)}年分): {normal_a:.1f}℃")
-print(f"{TARGET_MONTH_DAY} の平年値B(直近{len(normal_records_b)}年ローリング): {normal_b:.1f}℃")
+if RAW_MODE:
+    normal_a = raw_normal_a
+    normal_b = raw_normal_b
+    print(f"{TARGET_MONTH_DAY} の平年値A(1991-2020年固定、{len(normal_records_a)}年分、生データ): {normal_a:.1f}℃")
+    print(f"{TARGET_MONTH_DAY} の平年値B(直近{len(normal_records_b)}年ローリング、生データ): {normal_b:.1f}℃")
+else:
+    smoothed_a = kz_filter(build_daily_normal_series(archive_daily, 1991, 2020))
+    smoothed_b = kz_filter(build_daily_normal_series(archive_daily, year_start_b, year_end_b))
+    normal_a = lookup_normal(smoothed_a, TARGET_MONTH_DAY)
+    normal_b = lookup_normal(smoothed_b, TARGET_MONTH_DAY)
+
+    print(f"{TARGET_MONTH_DAY} の平年値A(1991-2020年固定): "
+          f"生データ {raw_normal_a:.1f}℃ → 平滑化後(9日移動平均×3回) {normal_a:.1f}℃")
+    print(f"{TARGET_MONTH_DAY} の平年値B(直近{len(normal_records_b)}年ローリング): "
+          f"生データ {raw_normal_b:.1f}℃ → 平滑化後(9日移動平均×3回) {normal_b:.1f}℃")
+
 print(f"AとBの差(B-A、温暖化の目安): {normal_b - normal_a:+.1f}℃")
 
 # 「平年との差」の判定基準は、最新の気候を反映するB(直近30年ローリング)を使う
