@@ -1,6 +1,10 @@
 import json
+import os
+import sys
 import urllib.request
 import urllib.parse
+import urllib.error
+from collections import defaultdict
 
 # さいたま市付近の座標
 LATITUDE = 35.86
@@ -9,6 +13,44 @@ LONGITUDE = 139.65
 TODAY_DATE = "2026-08-27"
 TARGET_MONTH_DAY = TODAY_DATE[5:]
 
+# --- キャッシュ ---
+# 目的は速度ではなく、Open-Meteo側のレート制限(429)を避けること。
+# ファイル名に地点・期間を含めておけば、期間が変わったときだけ
+# 自動的にキャッシュミスして再取得される(=有効期限の管理が不要)。
+CACHE_DIR = "cache"
+FORCE_REFRESH = "--no-cache" in sys.argv  # このオプションを付けるとキャッシュを無視する
+
+
+def cache_name(kind, params):
+    return f"{kind}_{LATITUDE}_{LONGITUDE}_{params['start_date']}_{params['end_date']}.json"
+
+
+def fetch_daily(base_url, params, name):
+    """daily データを取得する。キャッシュがあれば使い、なければ取得して保存する。"""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    cache_path = os.path.join(CACHE_DIR, name)
+
+    if not FORCE_REFRESH and os.path.exists(cache_path):
+        with open(cache_path, encoding="utf-8") as f:
+            return json.load(f)["daily"]
+
+    url = f"{base_url}?{urllib.parse.urlencode(params)}"
+    try:
+        with urllib.request.urlopen(url) as response:
+            raw = response.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            print("エラー: Open-Meteo APIのレート制限(429 Too Many Requests)に達しました。")
+            print("しばらく時間をおいてから再実行してください。")
+            sys.exit(1)
+        raise
+
+    with open(cache_path, "wb") as f:
+        f.write(raw)
+
+    return json.loads(raw)["daily"]
+
+
 # --- 過去の気候値(ERA5アーカイブ) ---
 # ERA5は数日の遅延があるため、直近すぎる日付は取得できない
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -16,18 +58,40 @@ ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 archive_params = {
     "latitude": LATITUDE,
     "longitude": LONGITUDE,
-    "start_date": "1996-08-27",
+    "start_date": "1940-01-01",  # ERA5で取得できる最古の日付
     "end_date": "2026-08-20",
     "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min",
     "timezone": "Asia/Tokyo",
 }
 
-archive_url = f"{ARCHIVE_URL}?{urllib.parse.urlencode(archive_params)}"
+archive_daily = fetch_daily(ARCHIVE_URL, archive_params, cache_name("archive", archive_params))
 
-with urllib.request.urlopen(archive_url) as response:
-    archive_data = json.loads(response.read())
+# --- この地点の気候(10年ごとの8月平均気温) ---
+# 8/27単日ではなく8月全体の平均を使うことで、1日単位のばらつきを均して
+# 長期トレンド(70年ほぼ横ばい→直近15年で急上昇)を見やすくする
+august_by_year = defaultdict(list)
+for date, mean in zip(archive_daily["time"], archive_daily["temperature_2m_mean"]):
+    if mean is None:
+        continue
+    year, month = date[:4], date[5:7]
+    if month == "08":
+        august_by_year[year].append(mean)
 
-archive_daily = archive_data["daily"]
+decade_values = defaultdict(list)
+for year, values in august_by_year.items():
+    if int(year) == 2026:
+        continue  # 2026年8月はまだ全日揃っていないので除外
+    decade_values[(int(year) // 10) * 10].append(sum(values) / len(values))
+
+decade_avgs = {d: sum(v) / len(v) for d, v in decade_values.items()}
+base = min(decade_avgs.values())
+
+print(f"--- この地点の気候(10年ごとの8月平均気温、{LATITUDE}, {LONGITUDE}) ---")
+for d in sorted(decade_avgs):
+    avg = decade_avgs[d]
+    bar = "■" * (int((avg - base) * 10) + 1)
+    print(f"  {d}年代: {avg:5.2f}℃ {bar}")
+print()
 
 # 今日と同じ月日(8月27日)の過去データを抜き出す
 same_day_records = [
@@ -41,9 +105,20 @@ same_day_records = [
     if date[5:] == TARGET_MONTH_DAY
 ]
 
-normal = sum(r[1] for r in same_day_records) / len(same_day_records)
+# 平年値A: 1991-2020年の固定30年(気象庁の公式基準と同じ期間)
+normal_records_a = [r for r in same_day_records if 1991 <= int(r[0][:4]) <= 2020]
+normal_a = sum(r[1] for r in normal_records_a) / len(normal_records_a)
 
-print(f"{TARGET_MONTH_DAY} の平年値(過去{len(same_day_records)}年の平均気温の平均): {normal:.1f}℃")
+# 平年値B: 直近30年のローリング(same_day_recordsは日付順なので末尾30件)
+normal_records_b = same_day_records[-30:]
+normal_b = sum(r[1] for r in normal_records_b) / len(normal_records_b)
+
+print(f"{TARGET_MONTH_DAY} の平年値A(1991-2020年固定、{len(normal_records_a)}年分): {normal_a:.1f}℃")
+print(f"{TARGET_MONTH_DAY} の平年値B(直近{len(normal_records_b)}年ローリング): {normal_b:.1f}℃")
+print(f"AとBの差(B-A、温暖化の目安): {normal_b - normal_a:+.1f}℃")
+
+# 「平年との差」の判定基準は、最新の気候を反映するB(直近30年ローリング)を使う
+normal = normal_b
 
 # --- Forecast APIのバイアス(ERA5とのズレ)を計算する ---
 # ERA5データがある直近7日分を、Forecast APIでも同じ日付で取得して比較する
@@ -70,12 +145,7 @@ overlap_params = {
     "end_date": overlap_dates[-1],
 }
 
-overlap_url = f"{FORECAST_URL}?{urllib.parse.urlencode(overlap_params)}"
-
-with urllib.request.urlopen(overlap_url) as response:
-    overlap_forecast_data = json.loads(response.read())
-
-overlap_forecast = overlap_forecast_data["daily"]
+overlap_forecast = fetch_daily(FORECAST_URL, overlap_params, cache_name("overlap", overlap_params))
 
 # 各日の「Forecast - ERA5」の差を集めて平均する = バイアス
 mean_diffs = []
@@ -110,12 +180,7 @@ forecast_params = {
     "end_date": TODAY_DATE,
 }
 
-forecast_url = f"{FORECAST_URL}?{urllib.parse.urlencode(forecast_params)}"
-
-with urllib.request.urlopen(forecast_url) as response:
-    forecast_data = json.loads(response.read())
-
-forecast_daily = forecast_data["daily"]
+forecast_daily = fetch_daily(FORECAST_URL, forecast_params, cache_name("forecast", forecast_params))
 raw_today_mean = forecast_daily["temperature_2m_mean"][0]
 raw_today_max = forecast_daily["temperature_2m_max"][0]
 raw_today_min = forecast_daily["temperature_2m_min"][0]
@@ -146,22 +211,31 @@ else:
     label = "寒さ"
 
 # --- ERA5のみの過去分布(データソースを混ぜない) ---
-historical_ranked = sorted(same_day_records, key=lambda r: r[value_index], reverse=order_desc)
-years = sorted(int(r[0][:4]) for r in same_day_records)
-year_min, year_max = years[0], years[-1]
+# 1940-1978年は衛星観測が本格化する前で信頼度が下がるため、
+# 「全期間(1940年以降)」と「衛星観測時代(1979年以降)」の2種類を出す
+def print_ranking(records, period_label):
+    ranked = sorted(records, key=lambda r: r[value_index], reverse=order_desc)
+    years = sorted(int(r[0][:4]) for r in records)
+    year_min, year_max = years[0], years[-1]
 
-print(f"\n{TARGET_MONTH_DAY} の{label}ランキング(ERA5のみ、{year_min}〜{year_max}年、全{len(historical_ranked)}件):")
-for rank, (date, mean, mx, mn) in enumerate(historical_ranked, start=1):
-    value = mx if order_desc else mn
-    print(f"  {rank:2d}位: {date}  {value:.1f} ℃")
+    print(f"\n{TARGET_MONTH_DAY} の{label}ランキング({period_label}、{year_min}〜{year_max}年、全{len(ranked)}件):")
+    for rank, (date, mean, mx, mn) in enumerate(ranked, start=1):
+        value = mx if order_desc else mn
+        print(f"  {rank:2d}位: {date}  {value:.1f} ℃")
 
-# --- 今日(Forecast API由来)の値を、ERA5の分布に当てはめた場合の位置 ---
-if order_desc:
-    better_count = sum(1 for r in same_day_records if r[value_index] > today_value)
-else:
-    better_count = sum(1 for r in same_day_records if r[value_index] < today_value)
-position = better_count + 1
+    if order_desc:
+        better_count = sum(1 for r in records if r[value_index] > today_value)
+    else:
+        better_count = sum(1 for r in records if r[value_index] < today_value)
+    position = better_count + 1
 
-print(f"\n今日({TODAY_DATE})の値は Forecast API 由来(ERA5基準にバイアス補正済み)の推定値です: {today_value:.1f}℃")
-print(f"ERA5ベースの過去{len(same_day_records)}年({year_min}〜{year_max}年)の{label}分布に当てはめると、"
-      f"{position}番目に位置します(過去の実測{len(same_day_records)}件中で数えた場合)")
+    print(f"今日({TODAY_DATE})の値は Forecast API 由来(ERA5基準にバイアス補正済み)の推定値です: {today_value:.1f}℃")
+    print(f"{period_label}の過去{len(records)}年({year_min}〜{year_max}年)の{label}分布に当てはめると、"
+          f"{position}番目に位置します(過去の実測{len(records)}件中で数えた場合)")
+
+
+records_1940 = same_day_records
+records_1979 = [r for r in same_day_records if int(r[0][:4]) >= 1979]
+
+print_ranking(records_1940, "ERA5 1940年以降・全期間")
+print_ranking(records_1979, "ERA5 1979年以降・衛星観測時代")
