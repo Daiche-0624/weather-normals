@@ -89,8 +89,10 @@ base = min(decade_avgs.values())
 print(f"--- この地点の気候(10年ごとの8月平均気温、{LATITUDE}, {LONGITUDE}) ---")
 for d in sorted(decade_avgs):
     avg = decade_avgs[d]
+    count = len(decade_values[d])
     bar = "■" * (int((avg - base) * 10) + 1)
-    print(f"  {d}年代: {avg:5.2f}℃ {bar}")
+    note = f"  ※{count}年分" if count != 10 else ""  # 10年に満たない区切りは母数を明記する
+    print(f"  {d}年代: {avg:5.2f}℃ {bar}{note}")
 print()
 
 # 今日と同じ月日(8月27日)の過去データを抜き出す
