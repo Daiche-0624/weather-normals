@@ -152,8 +152,8 @@ year_min, year_max = years[0], years[-1]
 
 print(f"\n{TARGET_MONTH_DAY} の{label}ランキング(ERA5のみ、{year_min}〜{year_max}年、全{len(historical_ranked)}件):")
 for rank, (date, mean, mx, mn) in enumerate(historical_ranked, start=1):
-    print(f"  {rank:2d}位: {date}  {r[value_index]:.1f} ℃" if False else
-          f"  {rank:2d}位: {date}  {(mx if order_desc else mn):.1f} ℃")
+    value = mx if order_desc else mn
+    print(f"  {rank:2d}位: {date}  {value:.1f} ℃")
 
 # --- 今日(Forecast API由来)の値を、ERA5の分布に当てはめた場合の位置 ---
 if order_desc:
