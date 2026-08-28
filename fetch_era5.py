@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("--date", type=str, default=None, help="対象日 YYYY-MM-DD(省略時: 今日)")
     parser.add_argument("--no-cache", action="store_true", help="キャッシュを無視して再取得する")
     parser.add_argument("--raw", action="store_true", help="平年値を平滑化せず、対象日1日分の生の平均をそのまま使う")
+    parser.add_argument("--full", action="store_true", help="ランキングを省略せず全件表示する")
     args = parser.parse_args()
 
     if args.date is None:
@@ -26,10 +27,10 @@ def parse_args():
         except ValueError:
             parser.error(f"--date は YYYY-MM-DD 形式で指定してください(入力値: {args.date!r})")
 
-    return args.lat, args.lon, date.isoformat(), args.no_cache, args.raw
+    return args.lat, args.lon, date.isoformat(), args.no_cache, args.raw, args.full
 
 
-LATITUDE, LONGITUDE, TODAY_DATE, FORCE_REFRESH, RAW_MODE = parse_args()
+LATITUDE, LONGITUDE, TODAY_DATE, FORCE_REFRESH, RAW_MODE, FULL_MODE = parse_args()
 TARGET_MONTH_DAY = TODAY_DATE[5:]
 
 # --- キャッシュ ---
@@ -299,21 +300,57 @@ else:
 # --- ERA5のみの過去分布(データソースを混ぜない) ---
 # 1940-1978年は衛星観測が本格化する前で信頼度が下がるため、
 # 「全期間(1940年以降)」と「衛星観測時代(1979年以降)」の2種類を出す
+TOP_N = 5  # デフォルト表示で必ず見せる上位件数
+AROUND = 2  # 今日の順位の前後、実測レコードで何件ずつ見せるか
+
+
 def print_ranking(records, period_label):
     ranked = sorted(records, key=lambda r: r[value_index], reverse=order_desc)
     years = sorted(int(r[0][:4]) for r in records)
     year_min, year_max = years[0], years[-1]
+    n = len(ranked)
 
-    print(f"\n{TARGET_MONTH_DAY} の{label}ランキング({period_label}、{year_min}〜{year_max}年、全{len(ranked)}件):")
-    for rank, (date, mean, mx, mn) in enumerate(ranked, start=1):
-        value = mx if order_desc else mn
-        print(f"  {rank:2d}位: {date}  {value:.1f} ℃")
-
+    # 今日を実測レコードに混ぜて順位付けすると、既存の順位番号とズレて
+    # 衝突する(例: 今日が23位に入ると元の23位が24位にずれる)ため、
+    # 実測レコードの順位番号は変えず、今日は番号なしの矢印で挿入する
     if order_desc:
         better_count = sum(1 for r in records if r[value_index] > today_value)
     else:
         better_count = sum(1 for r in records if r[value_index] < today_value)
-    position = better_count + 1
+    position = better_count + 1  # 今日を挿入するとしたら何位に当たるか
+
+    def print_record_row(rank, record):
+        value = record[2] if order_desc else record[3]
+        print(f"  {rank:2d}位: {record[0]}  {value:.1f} ℃")
+
+    def print_today_row():
+        print(f"      →  {TODAY_DATE}(今日)  {today_value:.1f} ℃")
+
+    def print_rows(start, end):
+        """1-indexedでstart〜end位までを表示し、今日の順位に当たる位置に矢印を挟む"""
+        for rank in range(start, end + 1):
+            if rank == position:
+                print_today_row()
+            print_record_row(rank, ranked[rank - 1])
+        if position == end + 1:
+            print_today_row()
+
+    print(f"\n{TARGET_MONTH_DAY} の{label}ランキング({period_label}、{year_min}〜{year_max}年、全{n}件):")
+
+    if FULL_MODE:
+        print_rows(1, n)
+    else:
+        window_start = max(1, position - AROUND)
+        window_end = min(n, position + AROUND)
+        top_end = min(TOP_N, n)
+
+        if window_start <= top_end + 1:
+            # 上位と今日周辺の範囲が重なる/隣接するので、省略なしでつなげて表示する
+            print_rows(1, max(top_end, window_end))
+        else:
+            print_rows(1, top_end)
+            print(f"  ...({top_end + 1}〜{window_start - 1}位省略)...")
+            print_rows(window_start, window_end)
 
     print(f"今日({TODAY_DATE})の値は Forecast API 由来(ERA5基準にバイアス補正済み)の推定値です: {today_value:.1f}℃")
     print(f"{period_label}の過去{len(records)}年({year_min}〜{year_max}年)の{label}分布に当てはめると、"
