@@ -13,12 +13,20 @@ Open-Meteo の ERA5 アーカイブを使い、今日の気温が平年と比べ
 - 説明は日本語で行う
 
 ## 進捗
-- Step 1(単体スクリプト `fetch_era5.py`)完了。詳細は README.md 参照
-- 次は Step 2 として FastAPI 化を予定している
+- Step 1(単体スクリプト `fetch_era5.py`)完了
+- Step 2(FastAPI化)完了。取得・計算ロジックを `core.py` に切り出し
+  (`build_report()` が dict を返す、print なし)、`cli.py`(argparse+print)
+  と `main.py`(FastAPI、`GET /api/report`)から共通で呼び出す構成にした。
+  詳細は README.md 参照
+- 既知の不具合として、気候セクション(10年ごとの平均)の月・年の
+  決め打ち(8月固定、2026年除外)がある。FastAPI化と切り分けるため
+  今回は直さず、別ブランチで修正する予定
+- 次のステップは未定(React等フロントエンドの導入時期も未定)
 
 ## 技術スタック
 - Python 3.10 / 仮想環境は .venv
-- Step 1 は単体スクリプトとして完了。Step 2 で FastAPI を導入する予定
+- Step 1 は単体スクリプトとして完了。Step 2 で FastAPI(+ uvicorn)を導入した
+  (`requirements.txt` 参照。CLI単体では引き続き標準ライブラリのみで動作する)
   (React 等フロントエンドの導入時期は未定)
 
 ## データ仕様

@@ -12,7 +12,7 @@ Open-Meteo の気象データを使って、今日の気温が平年と比べて
 3. 平年より暑いか寒いかに応じて、最高気温 or 最低気温で過去の記録に対する順位を出す
 4. 加えて、この地点の8月平均気温が過去70年でどう推移してきたかを表示する
 
-を1本のスクリプト `fetch_era5.py` で行います。
+計算ロジックは `core.py` にまとめ、`cli.py` から呼び出して実行します。
 
 ## データソースとその特性
 
@@ -107,13 +107,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-外部ライブラリは使用していない(標準ライブラリのみ)ため、
-`pip install` は不要。
+CLI(`cli.py`)は標準ライブラリのみで動作するため、`pip install` は
+不要。API(`main.py`)を使う場合は、後述の「API(FastAPI)」の手順で
+`fastapi` と `uvicorn` をインストールする。
 
 ## 使い方
 
 ```bash
-python fetch_era5.py
+python cli.py
 ```
 
 初回実行時はOpen-MeteoのAPIから直接データを取得し、`cache/` ディレクトリに
@@ -123,7 +124,7 @@ JSONをそのまま保存する。2回目以降は同じ地点・期間のリク
 地点や対象日を変えたい場合は、以下のオプションを指定する(すべて省略可能)。
 
 ```bash
-python fetch_era5.py --lat 43.06 --lon 141.35 --date 2026-01-15
+python cli.py --lat 43.06 --lon 141.35 --date 2026-01-15
 ```
 
 | オプション | 説明 | 省略時 |
@@ -139,7 +140,7 @@ python fetch_era5.py --lat 43.06 --lon 141.35 --date 2026-01-15
 キャッシュを無視して強制的に再取得したい場合:
 
 ```bash
-python fetch_era5.py --no-cache
+python cli.py --no-cache
 ```
 
 キャッシュは速度のためではなく、**Open-Meteoのレート制限(429)を
@@ -149,6 +150,49 @@ python fetch_era5.py --no-cache
 有効期限を管理する仕組みは意図的に入れていない(過去データは
 基本的に変化しないため、そのままにしておいても問題にならない)。
 不要になった古いキャッシュは `cache/` ごと手動で削除すればよい。
+
+## API(FastAPI)
+
+`main.py` は、`core.py` の計算結果をJSONで返すAPIサーバー。CLIとは
+違い、`fastapi` と `uvicorn`(ASGIサーバー)への依存がある。
+
+```bash
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+`--reload` はコードを変更するたびに自動で再起動する開発用オプション。
+起動後、以下にアクセスできる。
+
+- `http://127.0.0.1:8000/api/report` — レポート本体(JSON)
+- `http://127.0.0.1:8000/docs` — FastAPIが自動生成するAPIドキュメント
+  (Swagger UI)。ブラウザからパラメータを入力して直接試せる
+
+### `GET /api/report`
+
+| クエリパラメータ | 説明 | 省略時 |
+|---|---|---|
+| `lat` | 緯度 | `35.86`(さいたま市付近) |
+| `lon` | 経度 | `139.65`(さいたま市付近) |
+| `date` | 対象日(`YYYY-MM-DD` 形式) | 今日 |
+| `raw` | 平年値を平滑化せず生データを使う | `false` |
+| `no_cache` | キャッシュを無視して再取得する | `false` |
+
+`cli.py` と同じ `core.build_report()` を呼んでいるため、返す値は
+CLIの表示内容と一致する。ただしCLIの `--full`(ランキング表示の
+省略有無)に相当するオプションはなく、`/api/report` は常にランキング
+全件を返す。表示の間引きはターミナル向けの見せ方の都合であり、API
+のデータとしては全件返すほうが用途を狭めないため。
+
+不正な `date` を渡すと、FastAPIの型バリデーションにより自動で
+`422 Unprocessable Entity` が返る。Open-Meteo側のレート制限(429)に
+達した場合は、呼び出し側(このAPI)に非があるわけではないことを
+明示するため、`503 Service Unavailable` に変換して返す。
+
+将来、複数地点をまとめて地図表示するような機能が必要になった場合は、
+`/api/report` にパラメータを足すのではなく、`/api/summary` のような
+別エンドポイントを追加する方針にしている。用途が異なるものを1つの
+エンドポイントに詰め込まないため。
 
 ## 既知の制約
 
