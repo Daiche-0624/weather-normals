@@ -125,6 +125,88 @@ def build_ranking(records, period_label, value_index, order_desc, label, today_v
     }
 
 
+def build_today_from_forecast(latitude, longitude, today_date, archive_daily, force_refresh):
+    """ERA5にまだ実測値がない対象日向け。Forecast APIから取得し、直近7日間で
+    ERA5と比較して求めたバイアス分を補正する"""
+    # --- Forecast APIのバイアス(ERA5とのズレ)を計算する ---
+    overlap_dates = archive_daily["time"][-7:]
+    overlap_era5 = {
+        date: (mean, mx, mn)
+        for date, mean, mx, mn in zip(
+            archive_daily["time"],
+            archive_daily["temperature_2m_mean"],
+            archive_daily["temperature_2m_max"],
+            archive_daily["temperature_2m_min"],
+        )
+        if date in overlap_dates
+    }
+
+    overlap_params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min",
+        "timezone": "Asia/Tokyo",
+        "start_date": overlap_dates[0],
+        "end_date": overlap_dates[-1],
+    }
+    overlap_forecast = fetch_daily(
+        FORECAST_URL,
+        overlap_params,
+        cache_name("overlap", latitude, longitude, overlap_params),
+        force_refresh,
+    )
+
+    mean_diffs, max_diffs, min_diffs = [], [], []
+    for date, f_mean, f_mx, f_mn in zip(
+        overlap_forecast["time"],
+        overlap_forecast["temperature_2m_mean"],
+        overlap_forecast["temperature_2m_max"],
+        overlap_forecast["temperature_2m_min"],
+    ):
+        e_mean, e_mx, e_mn = overlap_era5[date]
+        mean_diffs.append(f_mean - e_mean)
+        max_diffs.append(f_mx - e_mx)
+        min_diffs.append(f_mn - e_mn)
+
+    bias_mean = sum(mean_diffs) / len(mean_diffs)
+    bias_max = sum(max_diffs) / len(max_diffs)
+    bias_min = sum(min_diffs) / len(min_diffs)
+
+    # --- 今日の値(Forecast API) ---
+    forecast_params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min",
+        "timezone": "Asia/Tokyo",
+        "start_date": today_date,
+        "end_date": today_date,
+    }
+    forecast_daily = fetch_daily(
+        FORECAST_URL,
+        forecast_params,
+        cache_name("forecast", latitude, longitude, forecast_params),
+        force_refresh,
+    )
+    raw_mean = forecast_daily["temperature_2m_mean"][0]
+    raw_max = forecast_daily["temperature_2m_max"][0]
+    raw_min = forecast_daily["temperature_2m_min"][0]
+
+    # ERA5基準に揃えるため、バイアス分を差し引く
+    return {
+        "source": "forecast",
+        "raw": {"mean": raw_mean, "max": raw_max, "min": raw_min},
+        "corrected": {
+            "mean": raw_mean - bias_mean,
+            "max": raw_max - bias_max,
+            "min": raw_min - bias_min,
+        },
+        "bias": {
+            "mean": bias_mean, "max": bias_max, "min": bias_min,
+            "overlap_days": len(overlap_dates),
+        },
+    }
+
+
 def build_report(latitude, longitude, target_date, *, raw=False, force_refresh=False):
     """指定地点・対象日について、平年値・今日の値・ランキングをまとめて計算し、dictで返す。
     print や sys.exit は行わない(呼び出し側の責務)"""
@@ -186,9 +268,14 @@ def build_report(latitude, longitude, target_date, *, raw=False, force_refresh=F
     normal_records_a = [r for r in same_day_records if 1991 <= int(r[0][:4]) <= 2020]
     raw_normal_a = sum(r[1] for r in normal_records_a) / len(normal_records_a)
 
-    # 平年値B: 直近30年のローリング
+    # 平年値B: 対象日時点での直近30年のローリング。
+    # 「アーカイブの最新年」をそのまま使うと、過去の対象日を見たときに
+    # 未来のデータで平年値を計算してしまう(例: 1980年を見ているのに
+    # 基準期間が1997-2026年になる)ため、対象日の年とアーカイブの最新年の
+    # 小さい方を使う(対象日が今日や未来なら、従来通りアーカイブの最新年になる)
     years_with_target_day = sorted(int(r[0][:4]) for r in same_day_records)
-    year_end_b = years_with_target_day[-1]
+    target_year = int(today_date[:4])
+    year_end_b = min(target_year, years_with_target_day[-1])
     year_start_b = year_end_b - 29
     normal_records_b = [r for r in same_day_records if year_start_b <= int(r[0][:4]) <= year_end_b]
     raw_normal_b = sum(r[1] for r in normal_records_b) / len(normal_records_b)
@@ -205,9 +292,10 @@ def build_report(latitude, longitude, target_date, *, raw=False, force_refresh=F
     # 「平年との差」の判定基準は、最新の気候を反映するB(直近30年ローリング)を使う
     normal = normal_b
 
-    # --- Forecast APIのバイアス(ERA5とのズレ)を計算する ---
-    overlap_dates = archive_daily["time"][-7:]
-    overlap_era5 = {
+    # --- 今日の値: ERA5に実測値があればそれを使い、なければForecast APIで推定する ---
+    # 「範囲(日付)で判定」ではなく「実際に値があるか」で判定する。ARCHIVE_END_DATEの
+    # 決め打ちに依存を増やさず、欠損日(1940年1月で確認済み)も自動的に取りこぼさないため
+    archive_by_date = {
         date: (mean, mx, mn)
         for date, mean, mx, mn in zip(
             archive_daily["time"],
@@ -215,64 +303,20 @@ def build_report(latitude, longitude, target_date, *, raw=False, force_refresh=F
             archive_daily["temperature_2m_max"],
             archive_daily["temperature_2m_min"],
         )
-        if date in overlap_dates
+        if mean is not None
     }
 
-    overlap_params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min",
-        "timezone": "Asia/Tokyo",
-        "start_date": overlap_dates[0],
-        "end_date": overlap_dates[-1],
-    }
-    overlap_forecast = fetch_daily(
-        FORECAST_URL,
-        overlap_params,
-        cache_name("overlap", latitude, longitude, overlap_params),
-        force_refresh,
-    )
-
-    mean_diffs, max_diffs, min_diffs = [], [], []
-    for date, f_mean, f_mx, f_mn in zip(
-        overlap_forecast["time"],
-        overlap_forecast["temperature_2m_mean"],
-        overlap_forecast["temperature_2m_max"],
-        overlap_forecast["temperature_2m_min"],
-    ):
-        e_mean, e_mx, e_mn = overlap_era5[date]
-        mean_diffs.append(f_mean - e_mean)
-        max_diffs.append(f_mx - e_mx)
-        min_diffs.append(f_mn - e_mn)
-
-    bias_mean = sum(mean_diffs) / len(mean_diffs)
-    bias_max = sum(max_diffs) / len(max_diffs)
-    bias_min = sum(min_diffs) / len(min_diffs)
-
-    # --- 今日の値(Forecast API) ---
-    # ERA5にはまだ今日のデータがないので、Forecast APIから取得し、バイアス分を補正する
-    forecast_params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min",
-        "timezone": "Asia/Tokyo",
-        "start_date": today_date,
-        "end_date": today_date,
-    }
-    forecast_daily = fetch_daily(
-        FORECAST_URL,
-        forecast_params,
-        cache_name("forecast", latitude, longitude, forecast_params),
-        force_refresh,
-    )
-    raw_today_mean = forecast_daily["temperature_2m_mean"][0]
-    raw_today_max = forecast_daily["temperature_2m_max"][0]
-    raw_today_min = forecast_daily["temperature_2m_min"][0]
-
-    # ERA5基準に揃えるため、バイアス分を差し引く
-    today_mean = raw_today_mean - bias_mean
-    today_max = raw_today_max - bias_max
-    today_min = raw_today_min - bias_min
+    if today_date in archive_by_date:
+        today_mean, today_max, today_min = archive_by_date[today_date]
+        today_info = {
+            "source": "era5",
+            "value": {"mean": today_mean, "max": today_max, "min": today_min},
+        }
+    else:
+        today_info = build_today_from_forecast(latitude, longitude, today_date, archive_daily, force_refresh)
+        today_mean = today_info["corrected"]["mean"]
+        today_max = today_info["corrected"]["max"]
+        today_min = today_info["corrected"]["min"]
 
     deviation = today_mean - normal
 
@@ -291,6 +335,9 @@ def build_report(latitude, longitude, target_date, *, raw=False, force_refresh=F
     # --- ERA5のみの過去分布(データソースを混ぜない) ---
     # 1940-1978年は衛星観測が本格化する前で信頼度が下がるため、
     # 「全期間(1940年以降)」と「衛星観測時代(1979年以降)」の2種類を出す
+    # 対象日自身がERA5実測範囲内にある場合、この一覧に対象日自身も含まれる。
+    # これは正しい(実測値である以上、順位表の中に通常の行として現れるべき)。
+    # 表示側(cli.py・frontend)で、対象日に該当する行をハイライトする
     records_1940 = same_day_records
     records_1979 = [r for r in same_day_records if int(r[0][:4]) >= 1979]
 
@@ -319,13 +366,8 @@ def build_report(latitude, longitude, target_date, *, raw=False, force_refresh=F
             },
             "diff_b_minus_a": normal_b - normal_a,
         },
-        "bias": {
-            "mean": bias_mean, "max": bias_max, "min": bias_min,
-            "overlap_days": len(overlap_dates),
-        },
         "today": {
-            "raw": {"mean": raw_today_mean, "max": raw_today_max, "min": raw_today_min},
-            "corrected": {"mean": today_mean, "max": today_max, "min": today_min},
+            **today_info,
             "deviation": deviation,
             "label": label,
         },

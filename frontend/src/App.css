@@ -1,0 +1,233 @@
+.app {
+  text-align: left;
+  padding: 24px 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+/* --- 入力フォーム(優先度が一番低いので控えめに) --- */
+.location-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.location-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text);
+}
+
+.location-form input {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 9em;
+}
+
+.location-form button {
+  font: inherit;
+  padding: 7px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.location-form button:hover {
+  box-shadow: var(--shadow);
+}
+
+.status-message {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.status-error {
+  color: var(--hot);
+}
+
+/* --- 今日の値(一番大きく見せるセクション) --- */
+.today-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  text-align: center;
+  padding: 24px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.target-date {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.today-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.today-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--text-h);
+}
+
+.today-value-number {
+  font-size: 72px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+
+.today-value-unit {
+  font-size: 28px;
+}
+
+.deviation {
+  font-size: 20px;
+  font-weight: 500;
+  padding: 4px 16px;
+  border-radius: 999px;
+}
+
+.deviation-hot {
+  color: var(--hot);
+  background: var(--hot-bg);
+}
+
+.deviation-cold {
+  color: var(--cold);
+  background: var(--cold-bg);
+}
+
+.data-note {
+  font-size: 13px;
+  color: var(--text);
+  max-width: 640px;
+}
+
+.normals-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 640px;
+}
+
+.normal-card {
+  flex: 1 1 220px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.normal-label {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.normal-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* --- ランキング --- */
+.rankings h2 {
+  margin-bottom: 4px;
+}
+
+.rankings-note {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.rankings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.ranking-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.ranking-card h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: var(--text-h);
+}
+
+.ranking-meta {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.ranking-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.ranking-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.ranking-table td:last-child {
+  text-align: right;
+}
+
+.ranking-row-today td {
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.ranking-row-ellipsis td {
+  text-align: center;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* --- 気候推移グラフ --- */
+.climate-chart h2 {
+  margin-bottom: 16px;
+}

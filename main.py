@@ -1,10 +1,19 @@
 import datetime
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 import core
 
 app = FastAPI()
+
+# 開発中はFastAPI(例: :8000)とViteの開発サーバー(:5173)がポートが異なり、
+# ブラウザからは別オリジン扱いになるため、フロントエンドからのアクセスを許可する
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["GET"],
+)
 
 
 @app.get("/api/report")

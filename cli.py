@@ -48,31 +48,43 @@ def print_normals(report, target_month_day):
     a = report["normals"]["a"]
     b = report["normals"]["b"]
 
+    # Bは対象日時点の直近30年(対象日が過去なら、その時点で妥当な期間になる)
+    b_period = f"{b['year_start']}-{b['year_end']}年、{b['count']}年分"
+
     if report["raw_mode"]:
         print(f"{target_month_day} の平年値A(1991-2020年固定、{a['count']}年分、生データ): {a['smoothed']:.1f}℃")
-        print(f"{target_month_day} の平年値B(直近{b['count']}年ローリング、生データ): {b['smoothed']:.1f}℃")
+        print(f"{target_month_day} の平年値B(直近30年ローリング、{b_period}、生データ): {b['smoothed']:.1f}℃")
     else:
         print(f"{target_month_day} の平年値A(1991-2020年固定): "
               f"生データ {a['raw']:.1f}℃ → 平滑化後(9日移動平均×3回) {a['smoothed']:.1f}℃")
-        print(f"{target_month_day} の平年値B(直近{b['count']}年ローリング): "
+        print(f"{target_month_day} の平年値B(直近30年ローリング、{b_period}): "
               f"生データ {b['raw']:.1f}℃ → 平滑化後(9日移動平均×3回) {b['smoothed']:.1f}℃")
 
-    print(f"AとBの差(B-A、温暖化の目安): {report['normals']['diff_b_minus_a']:+.1f}℃")
+    # 対象日が過去だと、AとBの基準期間がずれる(Bが対象日側にクランプされるため)。
+    # この差は「温暖化の目安」だけでなく「A(1991-2020年固定)とB(対象日時点の
+    # 直近30年)の基準期間の違い」も反映した数字になる
+    print(f"AとBの差(B-A): {report['normals']['diff_b_minus_a']:+.1f}℃"
+          f"(A: 1991-2020年 / B: {b['year_start']}-{b['year_end']}年の基準期間の違いを含む)")
 
 
 def print_bias_and_today(report, today_date):
-    bias = report["bias"]
     today = report["today"]
 
-    print(f"\n直近{bias['overlap_days']}日間のバイアス(Forecast - ERA5の平均): "
-          f"平均 {bias['mean']:+.1f}℃ / 最高 {bias['max']:+.1f}℃ / 最低 {bias['min']:+.1f}℃")
+    if today["source"] == "era5":
+        value = today["value"]
+        print(f"\n対象日({today_date})の値: ERA5の実測値です(推定・補正なし): "
+              f"平均 {value['mean']}℃ / 最高 {value['max']}℃ / 最低 {value['min']}℃")
+    else:
+        bias = today["bias"]
+        print(f"\n直近{bias['overlap_days']}日間のバイアス(Forecast - ERA5の平均): "
+              f"平均 {bias['mean']:+.1f}℃ / 最高 {bias['max']:+.1f}℃ / 最低 {bias['min']:+.1f}℃")
 
-    raw_today = today["raw"]
-    corrected = today["corrected"]
-    print(f"今日({today_date})の値(生データ): "
-          f"平均 {raw_today['mean']}℃ / 最高 {raw_today['max']}℃ / 最低 {raw_today['min']}℃")
-    print(f"今日({today_date})の値(ERA5基準に補正後): "
-          f"平均 {corrected['mean']:.1f}℃ / 最高 {corrected['max']:.1f}℃ / 最低 {corrected['min']:.1f}℃")
+        raw_today = today["raw"]
+        corrected = today["corrected"]
+        print(f"対象日({today_date})の値(生データ): "
+              f"平均 {raw_today['mean']}℃ / 最高 {raw_today['max']}℃ / 最低 {raw_today['min']}℃")
+        print(f"対象日({today_date})の値(ERA5基準に補正後): "
+              f"平均 {corrected['mean']:.1f}℃ / 最高 {corrected['max']:.1f}℃ / 最低 {corrected['min']:.1f}℃")
 
     print(f"平年との差: {today['deviation']:+.1f}℃")
     if today["label"] == "暑さ":
@@ -81,26 +93,32 @@ def print_bias_and_today(report, today_date):
         print("→ 平年より寒いので、最低気温でランキングします")
 
 
-def print_ranking(ranking, today_date, full_mode):
+def print_ranking(ranking, today_date, full_mode, today_source):
     records = ranking["records"]
     position = ranking["today_position"]
     today_value = ranking["today_value"]
     label = ranking["label"]
     n = ranking["total"]
+    is_era5 = today_source == "era5"
 
     def print_record_row(record):
-        print(f"  {record['rank']:2d}位: {record['date']}  {record['value']:.1f} ℃")
+        # ERA5実測のときは対象日自身が通常のレコードとして現れるので、
+        # 矢印を別行にせず、該当行の先頭に印を付けるだけにする
+        marker = "→ " if is_era5 and record["date"] == today_date else "  "
+        print(f"{marker}{record['rank']:2d}位: {record['date']}  {record['value']:.1f} ℃")
 
     def print_today_row():
-        print(f"      →  {today_date}(今日)  {today_value:.1f} ℃")
+        print(f"      →  {today_date}(対象日)  {today_value:.1f} ℃")
 
     def print_rows(start, end):
-        """1-indexedでstart〜end位までを表示し、今日の順位に当たる位置に矢印を挟む"""
+        """1-indexedでstart〜end位までを表示する。
+        Forecast推定のときだけ、対象日の順位に当たる位置に矢印を別行で挟む
+        (ERA5実測のときは対象日自身が通常の行として既に含まれているため不要)"""
         for rank in range(start, end + 1):
-            if rank == position:
+            if not is_era5 and rank == position:
                 print_today_row()
             print_record_row(records[rank - 1])
-        if position == end + 1:
+        if not is_era5 and position == end + 1:
             print_today_row()
 
     print(f"\n{today_date[5:]} の{label}ランキング({ranking['period_label']}、"
@@ -110,18 +128,29 @@ def print_ranking(ranking, today_date, full_mode):
         print_rows(1, n)
     else:
         window_start = max(1, position - AROUND)
-        window_end = min(n, position + AROUND)
+        if is_era5:
+            # 対象日自身が通常の行として1行に収まる(矢印による余分な1行がない)
+            # ため、後ろ側はそのままposition + AROUNDまででよい
+            window_end = min(n, position + AROUND)
+        else:
+            # 対象日は矢印の直後にある実測レコード(rank == position)の位置に
+            # 挟まれるため、そのレコード自体が「後ろ側1件目」に相当する。
+            # 後ろ側をAROUND件にするには、position + AROUND - 1 までが正しい
+            window_end = min(n, position + AROUND - 1)
         top_end = min(TOP_N, n)
 
         if window_start <= top_end + 1:
-            # 上位と今日周辺の範囲が重なる/隣接するので、省略なしでつなげて表示する
+            # 上位と対象日周辺の範囲が重なる/隣接するので、省略なしでつなげて表示する
             print_rows(1, max(top_end, window_end))
         else:
             print_rows(1, top_end)
             print(f"  ...({top_end + 1}〜{window_start - 1}位省略)...")
             print_rows(window_start, window_end)
 
-    print(f"今日({today_date})の値は Forecast API 由来(ERA5基準にバイアス補正済み)の推定値です: {today_value:.1f}℃")
+    if is_era5:
+        print(f"対象日({today_date})の値は ERA5 の実測値です: {today_value:.1f}℃")
+    else:
+        print(f"対象日({today_date})の値は Forecast API 由来(ERA5基準にバイアス補正済み)の推定値です: {today_value:.1f}℃")
     print(f"{ranking['period_label']}の過去{n}年({ranking['year_min']}〜{ranking['year_max']}年)の{label}分布に当てはめると、"
           f"{position}番目に位置します(過去の実測{n}件中で数えた場合)")
 
@@ -144,7 +173,7 @@ def main():
     print_bias_and_today(report, today_date)
 
     for ranking in report["rankings"]:
-        print_ranking(ranking, today_date, full)
+        print_ranking(ranking, today_date, full, report["today"]["source"])
 
 
 if __name__ == "__main__":
