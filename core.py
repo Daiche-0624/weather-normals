@@ -1,3 +1,4 @@
+import calendar
 import datetime
 import json
 import os
@@ -146,20 +147,22 @@ def build_report(latitude, longitude, target_date, *, raw=False, force_refresh=F
         force_refresh,
     )
 
-    # --- この地点の気候(10年ごとの8月平均気温) ---
-    # 8月全体の平均を使うことで、1日単位のばらつきを均して長期トレンドを見やすくする
-    august_by_year = defaultdict(list)
+    # --- この地点の気候(10年ごとの対象月平均気温) ---
+    # 対象月全体の平均を使うことで、1日単位のばらつきを均して長期トレンドを見やすくする
+    target_month = int(target_month_day[:2])
+    month_by_year = defaultdict(list)
     for date, mean in zip(archive_daily["time"], archive_daily["temperature_2m_mean"]):
         if mean is None:
             continue
         year, month = date[:4], date[5:7]
-        if month == "08":
-            august_by_year[year].append(mean)
+        if int(month) == target_month:
+            month_by_year[year].append(mean)
 
     decade_values = defaultdict(list)
-    for year, values in august_by_year.items():
-        if int(year) == 2026:
-            continue  # 2026年8月はまだ全日揃っていないので除外
+    for year, values in month_by_year.items():
+        expected_days = calendar.monthrange(int(year), target_month)[1]
+        if len(values) < expected_days:
+            continue  # その年のその月はまだ全日揃っていない(未来 or 欠損)
         decade_values[(int(year) // 10) * 10].append(sum(values) / len(values))
 
     climate_by_decade = [
