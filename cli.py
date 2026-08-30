@@ -32,8 +32,9 @@ def parse_args():
 def print_climate_by_decade(report, latitude, longitude):
     decades = report["climate_by_decade"]
     base = min(d["avg"] for d in decades)
+    target_month = int(report["target_date"][5:7])
 
-    print(f"--- この地点の気候(10年ごとの8月平均気温、{latitude}, {longitude}) ---")
+    print(f"--- この地点の気候(10年ごとの{target_month}月平均気温、{latitude}, {longitude}) ---")
     for d in decades:
         avg = d["avg"]
         count = d["count"]
