@@ -1,4 +1,8 @@
-const API_BASE = 'http://localhost:8000'
+// Viteはビルド時に環境変数を埋め込む(実行時にはos.environ的な読み方はできない)。
+// クライアントに渡してよい変数だけ公開するため、VITE_ 接頭辞が付いたものだけが
+// import.meta.env経由で見える。本番(Vercel)ではVITE_API_BASEにRenderのURLを
+// 設定する。ローカル開発では未設定のままでよく、その場合は右側の既定値を使う
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 
 export async function fetchReport({ lat, lon, date }) {
   const params = new URLSearchParams({ lat, lon, date })

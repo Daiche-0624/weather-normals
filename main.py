@@ -1,4 +1,5 @@
 import datetime
+import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,10 +9,14 @@ import core
 app = FastAPI()
 
 # 開発中はFastAPI(例: :8000)とViteの開発サーバー(:5173)がポートが異なり、
-# ブラウザからは別オリジン扱いになるため、フロントエンドからのアクセスを許可する
+# ブラウザからは別オリジン扱いになるため、フロントエンドからのアクセスを許可する。
+# 本番ではRender側の環境変数 FRONTEND_ORIGIN に本番のフロントエンドURL
+# (例: https://weather-normals.vercel.app)を設定することで切り替える
+FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[FRONTEND_ORIGIN],
     allow_methods=["GET"],
 )
 
