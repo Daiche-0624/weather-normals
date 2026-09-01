@@ -68,12 +68,10 @@ function App() {
     }
   }, [params])
 
-  // ボタンやランキングのハイライトなど、サイト全体のアクセントカラーを
-  // 気温表示エリアと同じ平年差テーマから派生させる(「背景は青系なのに
-  // ボタンは紫」のような系統のバラつきをなくすため)。既存の--accent系
-  // 変数(index.css)をここで上書きすることで、LocationFormやRankingTable
-  // 側のCSSは変更せずに色だけ追従させている。データ取得前はテーマが
-  // 決まらないので、index.css側の既定値にフォールバックする
+  // 気温によって変わってよいのは背景(空・雲)と平年差バッジだけ。
+  // ボタン・ランキングのハイライト・グラフの棒などサイト全体のアクセント色
+  // (--accent、index.css側で固定値を定義)には触れず、平年差テーマ由来の
+  // 色は空の背景(--theme-base)とバッジ専用の変数(--badge-accent)にだけ渡す
   const theme = report ? getTemperatureTheme(report.today.deviation) : null
 
   return (
@@ -83,9 +81,7 @@ function App() {
         theme
           ? {
               '--theme-base': theme.base,
-              '--accent': theme.accent,
-              '--accent-bg': `color-mix(in srgb, ${theme.accent} 14%, transparent)`,
-              '--accent-border': `color-mix(in srgb, ${theme.accent} 45%, transparent)`,
+              '--badge-accent': theme.accent,
             }
           : undefined
       }

@@ -1,10 +1,11 @@
-// 気温表示エリア(および、そこから派生させるボタンやハイライトなどサイト全体の
-// アクセントカラー)を、平年差(deviation)に応じて5段階で切り替えるための色定義。
+// 気温表示エリアの「空」の色(および、そこから派生させるボタンやハイライトなど
+// サイト全体のアクセントカラー)を、平年差(deviation)に応じて5段階で切り替える
+// ための色定義。
 //
-// 意図的に持つ色は base(背景の基調色)と accent(ボタン・ハイライトなど強調色)の
-// 2つだけにしている。雲の濃淡やページ全体のうっすらした色味は、この2色から
-// CSSのcolor-mix()でその場で導出する(App.css参照)。色の元になる値を1箇所に
-// 絞ることで、「背景は青系なのにボタンは紫」のような系統のバラつきを防ぐ。
+// 雲そのものは常に白系で固定し(CloudBackground.jsx参照)、この base(空の色)側を
+// 平年差でグラデーションさせる: 寒いほど青みが強く、暑いほど夕焼けのような
+// オレンジ〜ピンクに近づく。accent(ボタン・ハイライトなど強調色)は同じ空の色を
+// 濃くした値にして、系統が揃うようにしている。
 //
 // 表示だけの話なので、ここでの閾値・配色は計算ロジック(core.py側)には影響しない。
 const THEMES = [
@@ -12,36 +13,36 @@ const THEMES = [
     key: 'cold-strong',
     threshold: -3,
     label: '大きくマイナス',
-    base: '#a9bccb',
-    accent: '#3f6690',
+    base: '#82a7cc',
+    accent: '#3c6690',
   },
   {
     key: 'cold-mild',
     threshold: -1,
     label: 'ややマイナス',
-    base: '#bfd9de',
-    accent: '#2f7f95',
+    base: '#b3d0e3',
+    accent: '#3a7a9c',
   },
   {
     key: 'normal',
     threshold: 1,
     label: '平年並み',
-    base: '#e3d7bf',
-    accent: '#8a6d3f',
+    base: '#d7ecf3',
+    accent: '#4f92b0',
   },
   {
     key: 'warm-mild',
     threshold: 3,
     label: 'ややプラス',
-    base: '#dcb98e',
-    accent: '#b5652b',
+    base: '#f3dcc0',
+    accent: '#c07a3a',
   },
   {
     key: 'warm-strong',
     threshold: Infinity,
     label: '大きくプラス',
-    base: '#c08563',
-    accent: '#a1451e',
+    base: '#eebfa4',
+    accent: '#b85a2e',
   },
 ]
 

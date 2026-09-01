@@ -254,7 +254,9 @@
   font-weight: 600;
   padding: 6px 20px;
   border-radius: 999px;
-  background: var(--accent);
+  /* ここだけ平年差テーマ由来の色(--badge-accent、App.jsx側で設定)を使う。
+     ボタンやランキングのハイライトが使う固定の--accentとは別物 */
+  background: var(--badge-accent, var(--accent));
   color: white;
 }
 
@@ -342,17 +344,24 @@
   }
 }
 
-.rankings.first-reveal {
+/* ランキング表の行が初回だけ1位から順に1行ずつ現れる「パラパラめくり」演出。
+   開始遅延(--row-delay)はApp.jsx側で行インデックス・表の順番から計算して
+   インラインstyleで渡している。地点・日付の変更時はfirstRevealがfalseに
+   なりrow-revealクラス自体が付かないため、この演出は再生されない */
+.row-reveal {
   opacity: 0;
-  animation: fade-in 0.7s ease-out 1.8s forwards;
+  animation: row-reveal 220ms ease-out both;
+  animation-delay: var(--row-delay, 0ms);
 }
 
-@keyframes fade-in {
+@keyframes row-reveal {
   from {
     opacity: 0;
+    transform: translateY(-5px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -361,7 +370,7 @@
   .today-summary.first-reveal .cloud-bg,
   .today-summary.first-reveal .today-value,
   .today-summary.first-reveal .deviation,
-  .rankings.first-reveal {
+  .row-reveal {
     animation: none;
     opacity: 1;
     transform: none;
@@ -481,5 +490,17 @@
     margin-inline: 0;
     padding-inline: 24px;
     border-radius: 40px;
+    /* 縦積みレイアウト用のpadding-topは「気温の上に大きく余白を取る」ため
+       のものだが、この2カラムレイアウトではヘッダーの分だけ気温がすでに
+       下寄りになるため、上余白はやめてhero+detailのまとまりごと
+       パネルの中で縦centerに寄せ、気温がより上・画面中央寄りに来るようにする */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: min(640px, calc(100svh - 48px));
+  }
+
+  .today-summary-hero {
+    padding-top: 0;
   }
 }

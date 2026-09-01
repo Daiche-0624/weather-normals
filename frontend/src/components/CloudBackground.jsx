@@ -3,36 +3,48 @@ import { useId } from 'react'
 // 気温表示エリアの背景に敷く、雲のようなムラをSVGのfeTurbulence(パーリンノイズ)で
 // 作る。単純なぼかし円(filter: blur)だと輪郭が幾何学的すぎて雲に見えなかったため、
 // ノイズの濃淡をfeColorMatrixで「アルファマスク」に変換し、feCompositeで色の板に
-// 重ねるという手順にしている(ノイズが薄い部分は透明になり、地の背景色が透ける)。
-// 3枚のレイヤー(白寄り・黒寄り・テーマの強調色寄り)を重ねて濃淡の差をはっきり
-// 出しつつ、それぞれ違う速度でtransformをゆっくり動かして奥行きを出す
+// 重ねるという手順にしている(ノイズが薄い部分は透明になり、地の「空」の色が透ける)。
+//
+// baseFrequencyは固定値で、ノイズのパターン自体は静的(1回生成したら変化しない)。
+// 動きはCSS側(App.cssの.cloud-layer/.cloud-drift)のtransformだけで作っている。
+// 以前はfeTurbulenceのbaseFrequencyをSMILで揺らしていたが、これは毎フレーム
+// ノイズを再計算し直す重い処理でカクついていた。静的なノイズをtransformで
+// ゆっくり移動・拡大縮小させるほうが、ブラウザがGPU合成できるぶん軽く滑らかになる
+//
+// 雲そのものは常に白系で固定している(色は空側=theme.baseで表現するため)。
+// 3枚重ねているのは、白一色だとのっぺりするため、明るい本体(a)・影になる下側(b、
+// 空の色をわずかに拾わせて自然な陰影にする)・薄いもや(c)で奥行きを出すため。
+// 最初に平年差テーマの色そのもので雲を塗ったところ地の色と近すぎて知覚できず、
+// 白の割合を下げすぎたのが原因だった。この反省から、白は必ず75%以上を保っている
 const LAYERS = [
   {
     className: 'cloud-layer cloud-layer-a',
     seed: 2,
-    baseFrequency: '0.007 0.011',
-    freqWobble: '0.006 0.010',
-    dur: '34s',
-    fillMix: 'color-mix(in srgb, white 46%, var(--theme-base))',
-    opacity: 0.75,
+    baseFrequency: '0.014 0.018',
+    fillMix: '#ffffff',
+    opacity: 1,
+    // tableValuesは「下位67%のノイズは透明・上位33%は不透明」という階段関数。
+    // 単純な一次式(matrix)でしきい値を作ると、ノイズの分散が小さいときに
+    // ほぼ全域が閾値の内側/外側どちらかに寄ってしまい、雲がまったく
+    // 見えなくなる(実際に3回失敗した)。discreteのテーブルで明示的に
+    // 「上位何%を雲にするか」を指定する方が確実に効く
+    tableValues: '0 0 0 1 1',
   },
   {
     className: 'cloud-layer cloud-layer-b',
     seed: 11,
-    baseFrequency: '0.011 0.016',
-    freqWobble: '0.009 0.019',
-    dur: '27s',
-    fillMix: 'color-mix(in srgb, black 20%, var(--theme-base))',
-    opacity: 0.5,
+    baseFrequency: '0.011 0.015',
+    fillMix: 'color-mix(in srgb, white 72%, var(--theme-base))',
+    opacity: 0.85,
+    tableValues: '0 0 0 0 1 1',
   },
   {
     className: 'cloud-layer cloud-layer-c',
     seed: 19,
-    baseFrequency: '0.016 0.009',
-    freqWobble: '0.020 0.007',
-    dur: '22s',
-    fillMix: 'color-mix(in srgb, var(--accent) 42%, var(--theme-base))',
-    opacity: 0.55,
+    baseFrequency: '0.018 0.012',
+    fillMix: 'color-mix(in srgb, white 85%, var(--theme-base))',
+    opacity: 0.6,
+    tableValues: '0 0 0 1 1 1',
   },
 ]
 
@@ -55,25 +67,17 @@ function CloudBackground() {
               <feTurbulence
                 type="fractalNoise"
                 baseFrequency={layer.baseFrequency}
-                numOctaves={3}
+                numOctaves={4}
                 seed={layer.seed}
                 stitchTiles="stitch"
                 result="noise"
-              >
-                <animate
-                  attributeName="baseFrequency"
-                  dur={layer.dur}
-                  values={`${layer.baseFrequency};${layer.freqWobble};${layer.baseFrequency}`}
-                  repeatCount="indefinite"
-                />
-              </feTurbulence>
-              <feColorMatrix
-                in="noise"
-                type="matrix"
-                values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.5 0.5 0.5 0 -0.5"
-                result="mask"
               />
-              <feComposite in="SourceGraphic" in2="mask" operator="in" />
+              <feColorMatrix in="noise" type="luminanceToAlpha" result="luminance" />
+              <feComponentTransfer in="luminance" result="mask">
+                <feFuncA type="discrete" tableValues={layer.tableValues} />
+              </feComponentTransfer>
+              <feGaussianBlur in="mask" stdDeviation="1.5" result="softMask" />
+              <feComposite in="SourceGraphic" in2="softMask" operator="in" />
             </filter>
             <rect
               x="-120"
