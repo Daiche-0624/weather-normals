@@ -6,28 +6,51 @@
   gap: 32px;
 }
 
+/* --- ヘッダー(タイトル+サブタイトル+入力フォーム) --- */
 .app-header {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 24px;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 16px;
+  text-align: center;
+}
+
+.app-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
 }
 
-/* --- 入力フォーム(優先度が一番低いので控えめに) --- */
+.app-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+/* --- 入力フォーム(優先度が一番低いので控えめに)。
+   タイトル部分との境界がはっきり分かるよう、上に区切り線を入れる --- */
 .location-form {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: end;
   gap: 12px;
   font-size: 14px;
+  width: 100%;
+  max-width: 480px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
 }
 
 .location-form label {
@@ -70,16 +93,208 @@
   color: var(--hot);
 }
 
-/* --- 今日の値(一番大きく見せるセクション) --- */
+/* --- ローディング(スピナー+経過時間に応じたメッセージ) --- */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 56px 16px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- 全体レイアウト(気温表示エリア+詳細) --- */
+.app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.app-details {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  min-width: 0;
+}
+
+/* --- 今日の値(気温を主役にする、一番大きく見せるセクション)。
+   平年差に応じた色のぼかし楕円("雲")を背景に敷き、部屋のインテリアに
+   馴染むような低彩度・高明度のトーンで気温の暑い/寒いを表現する。
+   カード内は常にこの淡い背景色を前提にしているため、テキスト色は
+   ダークモードでも切り替わらないよう、ここだけ固定値で上書きしている --- */
 .today-summary {
+  position: relative;
+  overflow: hidden;
+  padding: 32px 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card-bg);
+}
+
+.today-summary-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  opacity: 0.7;
+}
+
+.blob-1 {
+  width: 55%;
+  padding-bottom: 55%;
+  top: -12%;
+  left: -8%;
+  background: var(--blob-1);
+  animation: drift-1 26s ease-in-out infinite alternate;
+}
+
+.blob-2 {
+  width: 46%;
+  padding-bottom: 46%;
+  bottom: -14%;
+  right: -6%;
+  background: var(--blob-2);
+  animation: drift-2 30s ease-in-out infinite alternate;
+}
+
+.blob-3 {
+  width: 38%;
+  padding-bottom: 38%;
+  top: 32%;
+  left: 55%;
+  background: var(--blob-3);
+  animation: drift-3 22s ease-in-out infinite alternate;
+}
+
+@keyframes drift-1 {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(6%, 8%) scale(1.08);
+  }
+}
+
+@keyframes drift-2 {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(-8%, -5%) scale(1.05);
+  }
+}
+
+@keyframes drift-3 {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(-5%, 6%) scale(0.94);
+  }
+}
+
+.today-summary-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
   align-items: center;
   text-align: center;
-  padding: 24px 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  /* このカードの背景は常に明るい淡色なので、文字色はダークモードでも固定する */
+  --text: rgba(51, 47, 42, 0.72);
+  --text-h: #2b2721;
+  --hot: #b3402f;
+  --hot-bg: rgba(179, 64, 47, 0.14);
+  --cold: #2a5c96;
+  --cold-bg: rgba(42, 92, 150, 0.14);
+}
+
+/* --- 初回表示時のみの登場演出。
+   1. 背景の雲が中心から広がる → 2. 気温がフェードイン
+   → 3. 平年差がフェードイン → 4. (App.css側で)順位が控えめに現れる。
+   地点・日付の変更時はfirst-revealクラス自体が付かないため、この
+   アニメーションは再生されない(条件はApp.jsx側でrefで一度きりに制御) --- */
+.today-summary.first-reveal .today-summary-bg {
+  animation: cloud-expand 1.3s ease-out both;
+}
+
+@keyframes cloud-expand {
+  from {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.today-summary.first-reveal .today-value {
+  opacity: 0;
+  animation: fade-up 0.6s ease-out 0.7s forwards;
+}
+
+.today-summary.first-reveal .deviation {
+  opacity: 0;
+  animation: fade-up 0.6s ease-out 1s forwards;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rankings.first-reveal {
+  opacity: 0;
+  animation: fade-in 0.7s ease-out 1.8s forwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob,
+  .today-summary.first-reveal .today-summary-bg,
+  .today-summary.first-reveal .today-value,
+  .today-summary.first-reveal .deviation,
+  .rankings.first-reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .target-date {
@@ -230,4 +445,21 @@
 /* --- 気候推移グラフ --- */
 .climate-chart h2 {
   margin-bottom: 16px;
+}
+
+/* --- 横画面(スマホ横持ち・タブレット)対応。
+   気温表示エリアを左に大きく・中央寄せで固定表示し、ランキングと
+   グラフ(縦画面のときと同じ構成のまま)を右側で縦に並べてスクロールできるようにする --- */
+@media (orientation: landscape) and (min-width: 680px) {
+  .app-main {
+    display: grid;
+    grid-template-columns: minmax(320px, 42%) 1fr;
+    align-items: start;
+    gap: 32px;
+  }
+
+  .today-summary {
+    position: sticky;
+    top: 24px;
+  }
 }

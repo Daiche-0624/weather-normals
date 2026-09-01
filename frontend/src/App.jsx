@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchReport } from './api'
 import ClimateChart from './components/ClimateChart'
+import LoadingIndicator from './components/LoadingIndicator'
 import LocationForm from './components/LocationForm'
 import RankingTable from './components/RankingTable'
 import TodaySummary from './components/TodaySummary'
@@ -28,6 +29,10 @@ function App() {
   const [report, setReport] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [isFirstReveal, setIsFirstReveal] = useState(false)
+  // セッション中で一度でも表示演出をしたかどうかのフラグ。stateにすると
+  // 演出のたびに再レンダーが走ってしまうため、演出の可否判定だけならrefで十分
+  const hasRevealedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -36,7 +41,11 @@ function App() {
     setError(null)
     fetchReport(params)
       .then((data) => {
-        if (!cancelled) setReport(data)
+        if (!cancelled) {
+          setReport(data)
+          setIsFirstReveal(!hasRevealedRef.current)
+          hasRevealedRef.current = true
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e.message)
@@ -53,11 +62,14 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>weather-normals</h1>
+        <div className="app-title">
+          <h1>weather-normals</h1>
+          <p className="app-subtitle">今日の気温は平年と比べてどうか</p>
+        </div>
         <LocationForm {...params} onSubmit={setParams} />
       </header>
 
-      {loading && <p className="status-message">読み込み中...</p>}
+      {loading && <LoadingIndicator />}
 
       {error && (
         <p className="status-message status-error">
@@ -66,32 +78,34 @@ function App() {
       )}
 
       {report && !loading && !error && (
-        <>
-          <TodaySummary report={report} />
+        <div className="app-main">
+          <TodaySummary report={report} firstReveal={isFirstReveal} />
 
-          <section className="rankings">
-            <h2>過去の記録との比較</h2>
-            <p className="rankings-note">
-              平年より{report.today.label === '暑さ' ? '暑い' : '寒い'}ので、
-              {report.today.label === '暑さ' ? '最高' : '最低'}気温でランキングします
-            </p>
-            <div className="rankings-grid">
-              {report.rankings.map((ranking) => (
-                <RankingTable
-                  key={ranking.period_label}
-                  ranking={ranking}
-                  todaySource={report.today.source}
-                  todayDate={report.target_date}
-                />
-              ))}
-            </div>
-          </section>
+          <div className="app-details">
+            <section className={`rankings ${isFirstReveal ? 'first-reveal' : ''}`}>
+              <h2>過去の記録との比較</h2>
+              <p className="rankings-note">
+                平年より{report.today.label === '暑さ' ? '暑い' : '寒い'}ので、
+                {report.today.label === '暑さ' ? '最高' : '最低'}気温でランキングします
+              </p>
+              <div className="rankings-grid">
+                {report.rankings.map((ranking) => (
+                  <RankingTable
+                    key={ranking.period_label}
+                    ranking={ranking}
+                    todaySource={report.today.source}
+                    todayDate={report.target_date}
+                  />
+                ))}
+              </div>
+            </section>
 
-          <ClimateChart
-            climateByDecade={report.climate_by_decade}
-            targetMonth={Number(report.target_date.slice(5, 7))}
-          />
-        </>
+            <ClimateChart
+              climateByDecade={report.climate_by_decade}
+              targetMonth={Number(report.target_date.slice(5, 7))}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
