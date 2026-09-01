@@ -87,7 +87,7 @@ function ClimateChart({ climateByDecade, targetMonth }) {
           />
           <YAxis domain={[domainMin, domainMax]} unit="℃" tick={{ fontSize: 12 }} />
           <Tooltip formatter={(value) => [`${value} ℃`, '平均気温']} />
-          <Bar dataKey="avg" fill="#4c78a8" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="avg" fill="var(--accent)" radius={[10, 10, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </section>

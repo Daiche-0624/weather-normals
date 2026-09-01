@@ -1,19 +1,27 @@
 .app {
+  --app-pad-x: 32px;
   text-align: left;
-  padding: 24px 32px 64px;
+  padding: 24px var(--app-pad-x) 64px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 40px;
 }
 
-/* --- ヘッダー(タイトル+サブタイトル+入力フォーム) --- */
+@media (max-width: 480px) {
+  .app {
+    --app-pad-x: 16px;
+  }
+}
+
+/* --- ヘッダー(タイトル+サブタイトル+入力フォーム)。
+   罫線で区切るのではなく、余白の広さと文字サイズの差だけで
+   「ここが顔」と伝わるようにしている --- */
 .app-header {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
   text-align: center;
 }
 
@@ -25,63 +33,78 @@
 
 .app-header h1 {
   margin: 0;
-  font-size: 30px;
+  font-size: clamp(40px, 7vw, 64px);
+  /* index.cssの:rootは18px/145%(=26px)の固定line-heightを子孫に継承させる。
+     タイトルを64pxまで拡大したときにこの26pxのまま残っていたせいで、
+     行box(26px)より文字の実際の高さの方がはるかに大きくなり、
+     サブタイトルに重なって見えていた */
+  line-height: 1.1;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.06em;
+  color: var(--text-h);
 }
 
 .app-subtitle {
-  margin: 6px 0 0;
-  font-size: 14px;
-  letter-spacing: 0.06em;
-  color: var(--text);
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
 }
 
-/* --- 入力フォーム(優先度が一番低いので控えめに)。
-   タイトル部分との境界がはっきり分かるよう、上に区切り線を入れる --- */
+/* --- 入力フォーム。罫線の代わりに、周囲との間隔だけでタイトルと切り分ける。
+   input自体も箱を作らず、下線だけの控えめな見た目にしている --- */
 .location-form {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: end;
-  gap: 12px;
+  gap: 20px;
   font-size: 14px;
   width: 100%;
   max-width: 480px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px dashed var(--border);
+  margin-top: 32px;
 }
 
 .location-form label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   color: var(--text);
 }
 
 .location-form input {
   font: inherit;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
+  padding: 4px 2px;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
+  border-radius: 0;
+  background: transparent;
   color: var(--text-h);
   width: 9em;
+  transition: border-color 0.2s ease;
+}
+
+.location-form input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
 }
 
 .location-form button {
   font: inherit;
-  padding: 7px 16px;
-  border-radius: 4px;
-  border: 1px solid var(--accent-border);
-  background: var(--accent-bg);
-  color: var(--accent);
+  font-weight: 500;
+  padding: 9px 22px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent);
+  color: white;
   cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .location-form button:hover {
   box-shadow: var(--shadow);
+  transform: translateY(-1px);
 }
 
 .status-message {
@@ -106,7 +129,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 3px solid var(--border);
+  border: 3px solid color-mix(in srgb, var(--text) 15%, transparent);
   border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
@@ -121,121 +144,169 @@
 .app-main {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 40px;
 }
 
 .app-details {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 40px;
   min-width: 0;
 }
 
-/* --- 今日の値(気温を主役にする、一番大きく見せるセクション)。
-   平年差に応じた色のぼかし楕円("雲")を背景に敷き、部屋のインテリアに
-   馴染むような低彩度・高明度のトーンで気温の暑い/寒いを表現する。
-   カード内は常にこの淡い背景色を前提にしているため、テキスト色は
-   ダークモードでも切り替わらないよう、ここだけ固定値で上書きしている --- */
+/* ============================================================
+   今日の値(気温を主役にする、一番大きく見せるセクション)
+   ============================================================
+   カードの枠・影をやめ、背景をエリア全体に広げて要素を直接その上に
+   置く構成にしている。デフォルト(縦積みレイアウト)では.appの左右
+   余白をキャンセルする負のマージンで画面幅いっぱいに広げ、横画面の
+   2カラムレイアウト(下部のmedia query)ではその負マージンを解除し、
+   大きな角丸を持つ1枚のパネルとして表示する
+   ============================================================ */
 .today-summary {
   position: relative;
   overflow: hidden;
-  padding: 32px 16px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  background: var(--card-bg);
+  margin-inline: calc(var(--app-pad-x) * -1);
+  padding-inline: var(--app-pad-x);
+  background: var(--theme-base, var(--bg));
+  color: color-mix(in srgb, var(--theme-base, var(--bg)) 25%, black);
+  isolation: isolate;
+  /* 気温の巨大文字を「画面幅」ではなく「このパネル自身の幅」基準で
+     縮尺したいのでコンテナクエリ化する。横画面レイアウトではこのパネルが
+     画面の42%ほどの幅しかないため、vw基準のままだと画面全体を基準にした
+     巨大な文字サイズがそのまま適用されてしまい、はみ出して見切れていた */
+  container-type: inline-size;
 }
 
-.today-summary-bg {
+.cloud-bg {
   position: absolute;
   inset: 0;
   z-index: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
-.blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(48px);
-  opacity: 0.7;
+.cloud-layer {
+  animation: cloud-drift 26s ease-in-out infinite alternate;
 }
 
-.blob-1 {
-  width: 55%;
-  padding-bottom: 55%;
-  top: -12%;
-  left: -8%;
-  background: var(--blob-1);
-  animation: drift-1 26s ease-in-out infinite alternate;
+.cloud-layer-a {
+  animation-duration: 34s;
 }
 
-.blob-2 {
-  width: 46%;
-  padding-bottom: 46%;
-  bottom: -14%;
-  right: -6%;
-  background: var(--blob-2);
-  animation: drift-2 30s ease-in-out infinite alternate;
+.cloud-layer-b {
+  animation-duration: 27s;
+  animation-direction: alternate-reverse;
 }
 
-.blob-3 {
-  width: 38%;
-  padding-bottom: 38%;
-  top: 32%;
-  left: 55%;
-  background: var(--blob-3);
-  animation: drift-3 22s ease-in-out infinite alternate;
+.cloud-layer-c {
+  animation-duration: 22s;
 }
 
-@keyframes drift-1 {
+@keyframes cloud-drift {
   from {
     transform: translate(0, 0) scale(1);
   }
   to {
-    transform: translate(6%, 8%) scale(1.08);
+    transform: translate(4%, 3%) scale(1.06);
   }
 }
 
-@keyframes drift-2 {
-  from {
-    transform: translate(0, 0) scale(1);
-  }
-  to {
-    transform: translate(-8%, -5%) scale(1.05);
-  }
-}
-
-@keyframes drift-3 {
-  from {
-    transform: translate(0, 0) scale(1);
-  }
-  to {
-    transform: translate(-5%, 6%) scale(0.94);
-  }
-}
-
-.today-summary-content {
+/* 気温・平年差(主役)は中央寄せ、周りの余白を大きく取る */
+.today-summary-hero {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
   align-items: center;
+  gap: 10px;
   text-align: center;
-  /* このカードの背景は常に明るい淡色なので、文字色はダークモードでも固定する */
-  --text: rgba(51, 47, 42, 0.72);
-  --text-h: #2b2721;
-  --hot: #b3402f;
-  --hot-bg: rgba(179, 64, 47, 0.14);
-  --cold: #2a5c96;
-  --cold-bg: rgba(42, 92, 150, 0.14);
+  padding-top: clamp(56px, 15cqw, 116px);
+  padding-bottom: 20px;
+}
+
+.target-date {
+  font-size: 14px;
+  color: color-mix(in srgb, var(--theme-base, var(--bg)) 45%, black);
+}
+
+.today-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: color-mix(in srgb, var(--theme-base, var(--bg)) 20%, black);
+}
+
+.today-value-number {
+  font-size: clamp(144px, 26cqw, 190px);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+.today-value-unit {
+  font-size: clamp(28px, 5cqw, 44px);
+}
+
+.deviation {
+  font-size: clamp(16px, 3cqw, 22px);
+  font-weight: 600;
+  padding: 6px 20px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+}
+
+/* データソースの注記・平年値A/Bは左寄せで、詰めた間隔にする
+   (主役の気温まわりの余白の広さと、あえて対比させている) */
+.today-summary-detail {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  max-width: 640px;
+  margin: 0 auto;
+  padding-top: 4px;
+  padding-bottom: clamp(40px, 10cqw, 76px);
+}
+
+.data-note {
+  font-size: 13px;
+  color: color-mix(in srgb, var(--theme-base, var(--bg)) 40%, black);
+}
+
+.normals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 36px;
+}
+
+.normal-item {
+  min-width: 170px;
+}
+
+.normal-label {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--theme-base, var(--bg)) 40%, black);
+  margin-bottom: 2px;
+}
+
+.normal-value {
+  font-size: 21px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--theme-base, var(--bg)) 15%, black);
 }
 
 /* --- 初回表示時のみの登場演出。
    1. 背景の雲が中心から広がる → 2. 気温がフェードイン
-   → 3. 平年差がフェードイン → 4. (App.css側で)順位が控えめに現れる。
+   → 3. 平年差がフェードイン → 4. (下部で)順位が控えめに現れる。
    地点・日付の変更時はfirst-revealクラス自体が付かないため、この
    アニメーションは再生されない(条件はApp.jsx側でrefで一度きりに制御) --- */
-.today-summary.first-reveal .today-summary-bg {
+.today-summary.first-reveal .cloud-bg {
   animation: cloud-expand 1.3s ease-out both;
 }
 
@@ -286,8 +357,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .blob,
-  .today-summary.first-reveal .today-summary-bg,
+  .cloud-layer,
+  .today-summary.first-reveal .cloud-bg,
   .today-summary.first-reveal .today-value,
   .today-summary.first-reveal .deviation,
   .rankings.first-reveal {
@@ -297,88 +368,8 @@
   }
 }
 
-.target-date {
-  font-size: 14px;
-  color: var(--text);
-}
-
-.today-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.today-value {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  color: var(--text-h);
-}
-
-.today-value-number {
-  font-size: 72px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -2px;
-}
-
-.today-value-unit {
-  font-size: 28px;
-}
-
-.deviation {
-  font-size: 20px;
-  font-weight: 500;
-  padding: 4px 16px;
-  border-radius: 999px;
-}
-
-.deviation-hot {
-  color: var(--hot);
-  background: var(--hot-bg);
-}
-
-.deviation-cold {
-  color: var(--cold);
-  background: var(--cold-bg);
-}
-
-.data-note {
-  font-size: 13px;
-  color: var(--text);
-  max-width: 640px;
-}
-
-.normals-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 16px;
-  width: 100%;
-  max-width: 640px;
-}
-
-.normal-card {
-  flex: 1 1 220px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.normal-label {
-  font-size: 13px;
-  color: var(--text);
-  margin-bottom: 4px;
-}
-
-.normal-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-/* --- ランキング --- */
+/* --- ランキング。枠線の代わりに、地の背景とのわずかな色差だけで
+   領域を示し、影も広く薄いものにする --- */
 .rankings h2 {
   margin-bottom: 4px;
 }
@@ -392,13 +383,14 @@
 .rankings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
+  gap: 20px;
 }
 
 .ranking-card {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 28px;
+  padding: 20px 24px;
+  background: color-mix(in srgb, var(--theme-base, var(--border)) 8%, var(--bg));
+  box-shadow: var(--shadow);
 }
 
 .ranking-card h3 {
@@ -420,8 +412,7 @@
 }
 
 .ranking-table td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
@@ -430,30 +421,56 @@
   text-align: right;
 }
 
+.ranking-table tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
 .ranking-row-today td {
   font-weight: 600;
   color: var(--accent);
   background: var(--accent-bg);
 }
 
+.ranking-row-today td:first-child {
+  border-radius: 10px 0 0 10px;
+}
+
+.ranking-row-today td:last-child {
+  border-radius: 0 10px 10px 0;
+}
+
 .ranking-row-ellipsis td {
   text-align: center;
   color: var(--text);
   font-size: 13px;
+  background: transparent;
 }
 
-/* --- 気候推移グラフ --- */
+/* --- 気候推移グラフ。ランキングと同じ、枠なし・淡い色差のパネル --- */
+.climate-chart {
+  border-radius: 28px;
+  padding: 24px;
+  background: color-mix(in srgb, var(--theme-base, var(--border)) 8%, var(--bg));
+  box-shadow: var(--shadow);
+}
+
 .climate-chart h2 {
   margin-bottom: 16px;
 }
 
 /* --- 横画面(スマホ横持ち・タブレット)対応。
-   気温表示エリアを左に大きく・中央寄せで固定表示し、ランキングと
-   グラフ(縦画面のときと同じ構成のまま)を右側で縦に並べてスクロールできるようにする --- */
-@media (orientation: landscape) and (min-width: 680px) {
+   気温表示エリアを左に大きく固定表示し、ランキングとグラフ(縦画面の
+   ときと同じ構成のまま)を右側で縦に並べてスクロールできるようにする。
+   縦積みレイアウトのときと違い画面端まで届かないため、ここでは
+   負マージンでの全幅化をやめ、大きな角丸を持つ1枚のパネルにする。
+   閾値をmin-width:760pxにし、列の最小幅も320→380pxに広げているのは、
+   スマホを横向きにした程度の幅(700px前後)だと気温の巨大数字が
+   パネルからはみ出してしまうため。それより狭い横画面では2カラム化を
+   やめ、縦画面と同じ全幅レイアウトにフォールバックすることで回避する --- */
+@media (orientation: landscape) and (min-width: 760px) {
   .app-main {
     display: grid;
-    grid-template-columns: minmax(320px, 42%) 1fr;
+    grid-template-columns: minmax(380px, 42%) 1fr;
     align-items: start;
     gap: 32px;
   }
@@ -461,5 +478,8 @@
   .today-summary {
     position: sticky;
     top: 24px;
+    margin-inline: 0;
+    padding-inline: 24px;
+    border-radius: 40px;
   }
 }

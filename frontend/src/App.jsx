@@ -5,7 +5,16 @@ import LoadingIndicator from './components/LoadingIndicator'
 import LocationForm from './components/LocationForm'
 import RankingTable from './components/RankingTable'
 import TodaySummary from './components/TodaySummary'
+import { selectRankingRows } from './ranking'
+import { getTemperatureTheme } from './theme'
 import './App.css'
+
+// ランキング表の行が初回だけ1行ずつパラパラと現れる演出の速さ。
+// 50〜80msの間で、多すぎる行数でも体感1秒前後に収まるよう控えめに50msにしている
+const ROW_REVEAL_DELAY_MS = 50
+// 気温側の登場演出(平年差が1秒前後でフェードインし終わる)と被らないよう、
+// ランキングの行めくりはそのあとから始める
+const RANKING_REVEAL_BASE_DELAY_MS = 1600
 
 // toISOString()はUTCに変換されるため、JST(UTC+9)では日付が変わってから
 // 朝9時までの間、1日前の日付になってしまう。ローカル日時の年月日をそのまま使う
@@ -59,12 +68,32 @@ function App() {
     }
   }, [params])
 
+  // ボタンやランキングのハイライトなど、サイト全体のアクセントカラーを
+  // 気温表示エリアと同じ平年差テーマから派生させる(「背景は青系なのに
+  // ボタンは紫」のような系統のバラつきをなくすため)。既存の--accent系
+  // 変数(index.css)をここで上書きすることで、LocationFormやRankingTable
+  // 側のCSSは変更せずに色だけ追従させている。データ取得前はテーマが
+  // 決まらないので、index.css側の既定値にフォールバックする
+  const theme = report ? getTemperatureTheme(report.today.deviation) : null
+
   return (
-    <div className="app">
+    <div
+      className="app"
+      style={
+        theme
+          ? {
+              '--theme-base': theme.base,
+              '--accent': theme.accent,
+              '--accent-bg': `color-mix(in srgb, ${theme.accent} 14%, transparent)`,
+              '--accent-border': `color-mix(in srgb, ${theme.accent} 45%, transparent)`,
+            }
+          : undefined
+      }
+    >
       <header className="app-header">
         <div className="app-title">
           <h1>weather-normals</h1>
-          <p className="app-subtitle">今日の気温は平年と比べてどうか</p>
+          <p className="app-subtitle">Today vs. the last 30 years</p>
         </div>
         <LocationForm {...params} onSubmit={setParams} />
       </header>
@@ -82,21 +111,35 @@ function App() {
           <TodaySummary report={report} firstReveal={isFirstReveal} />
 
           <div className="app-details">
-            <section className={`rankings ${isFirstReveal ? 'first-reveal' : ''}`}>
+            <section className="rankings">
               <h2>過去の記録との比較</h2>
               <p className="rankings-note">
                 平年より{report.today.label === '暑さ' ? '暑い' : '寒い'}ので、
                 {report.today.label === '暑さ' ? '最高' : '最低'}気温でランキングします
               </p>
               <div className="rankings-grid">
-                {report.rankings.map((ranking) => (
-                  <RankingTable
-                    key={ranking.period_label}
-                    ranking={ranking}
-                    todaySource={report.today.source}
-                    todayDate={report.target_date}
-                  />
-                ))}
+                {report.rankings.reduce((acc, ranking) => {
+                  // 表が2つあるので、上の表の行がすべて出終わった直後から
+                  // 下の表が始まるよう、行数から開始遅延を積み上げて計算する
+                  const rowCount = selectRankingRows(ranking, {
+                    source: report.today.source,
+                    todayDate: report.target_date,
+                  }).length
+                  const startDelay = acc.cumulativeDelay
+                  acc.cumulativeDelay += rowCount * ROW_REVEAL_DELAY_MS
+                  acc.elements.push(
+                    <RankingTable
+                      key={ranking.period_label}
+                      ranking={ranking}
+                      todaySource={report.today.source}
+                      todayDate={report.target_date}
+                      firstReveal={isFirstReveal}
+                      rowStartDelay={startDelay}
+                      rowDelayMs={ROW_REVEAL_DELAY_MS}
+                    />,
+                  )
+                  return acc
+                }, { cumulativeDelay: RANKING_REVEAL_BASE_DELAY_MS, elements: [] }).elements}
               </div>
             </section>
 

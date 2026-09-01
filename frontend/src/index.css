@@ -12,8 +12,7 @@
   --hot-bg: rgba(192, 57, 43, 0.1);
   --cold: #2266bb;
   --cold-bg: rgba(34, 102, 187, 0.1);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --shadow: rgba(0, 0, 0, 0.1) 0 30px 60px -30px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -49,8 +48,7 @@
     --hot-bg: rgba(255, 107, 91, 0.15);
     --cold: #6ea8fe;
     --cold-bg: rgba(110, 168, 254, 0.15);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --shadow: rgba(0, 0, 0, 0.45) 0 30px 60px -30px;
   }
 
   #social .button-icon {
@@ -67,7 +65,6 @@ body {
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
-  border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -79,6 +76,12 @@ h2 {
   font-family: var(--heading);
   font-weight: 500;
   color: var(--text-h);
+}
+
+/* 見出しの色もその時々のテーマ(平年差の色)から少し寄せる。
+   ボタンやハイライトと系統を揃えるため、素の--text-hそのままにしない */
+h2 {
+  color: color-mix(in srgb, var(--accent) 45%, var(--text-h));
 }
 
 h1 {

@@ -1,41 +1,47 @@
-// 気温表示エリアの背景を、平年差(deviation)に応じて5段階で切り替えるための
-// 色定義。彩度低め・明度高めの、インテリアに馴染むトーンでまとめている。
+// 気温表示エリア(および、そこから派生させるボタンやハイライトなどサイト全体の
+// アクセントカラー)を、平年差(deviation)に応じて5段階で切り替えるための色定義。
+//
+// 意図的に持つ色は base(背景の基調色)と accent(ボタン・ハイライトなど強調色)の
+// 2つだけにしている。雲の濃淡やページ全体のうっすらした色味は、この2色から
+// CSSのcolor-mix()でその場で導出する(App.css参照)。色の元になる値を1箇所に
+// 絞ることで、「背景は青系なのにボタンは紫」のような系統のバラつきを防ぐ。
+//
 // 表示だけの話なので、ここでの閾値・配色は計算ロジック(core.py側)には影響しない。
 const THEMES = [
   {
     key: 'cold-strong',
     threshold: -3,
     label: '大きくマイナス',
-    base: '#ccd6e0',
-    blobs: ['#b9c7d4', '#dfe7ee', '#a9bccb'],
+    base: '#a9bccb',
+    accent: '#3f6690',
   },
   {
     key: 'cold-mild',
     threshold: -1,
     label: 'ややマイナス',
-    base: '#dcebee',
-    blobs: ['#cfe2e6', '#eaf4f6', '#bfd9de'],
+    base: '#bfd9de',
+    accent: '#2f7f95',
   },
   {
     key: 'normal',
     threshold: 1,
     label: '平年並み',
-    base: '#f2ece0',
-    blobs: ['#ebe2d0', '#f8f3e9', '#e3d7bf'],
+    base: '#e3d7bf',
+    accent: '#8a6d3f',
   },
   {
     key: 'warm-mild',
     threshold: 3,
     label: 'ややプラス',
-    base: '#eed7bd',
-    blobs: ['#e5c49f', '#f5e7d2', '#dcb98e'],
+    base: '#dcb98e',
+    accent: '#b5652b',
   },
   {
     key: 'warm-strong',
     threshold: Infinity,
     label: '大きくプラス',
-    base: '#dcae95',
-    blobs: ['#cf9877', '#e8c2a8', '#c08563'],
+    base: '#c08563',
+    accent: '#a1451e',
   },
 ]
 
